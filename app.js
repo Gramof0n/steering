@@ -1,6 +1,7 @@
-//SETUP CANVAS
-const canvas = document.createElement("canvas");
 const app = document.getElementById("app");
+
+//SETUP MAIN CANVAS
+const canvas = document.createElement("canvas");
 const height = 1000;
 const width = 1500;
 
@@ -10,9 +11,27 @@ canvas.id = "canvas";
 canvas.width = width;
 canvas.height = height;
 canvas.style.border = "1px solid black";
-canvas.style.backgroundColor = "rgb(177, 177, 177)";
+canvas.style.backgroundColor = "transparent";
+canvas.style.position = "absolute";
+canvas.style.top = 0;
+canvas.style.left = 0;
+canvas.style.zIndex = 1;
 
 app.appendChild(canvas);
+
+//SETUP PATH CANVAS
+const path_canvas = document.createElement("canvas");
+
+const path_ctx = path_canvas.getContext("2d");
+
+path_canvas.id = "path_canvas";
+path_canvas.width = width;
+path_canvas.height = height;
+path_canvas.style.border = "1px solid black";
+
+path_canvas.style.backgroundColor = "rgb(177, 177, 177)";
+path_canvas.style.zIndex = 2;
+app.appendChild(path_canvas);
 
 //BUTTONS
 const followButton = document.getElementById("follow");
@@ -26,12 +45,23 @@ const wanderButton = document.getElementById("wander");
 const parkButton = document.getElementById("park");
 const removeButton = document.getElementById("remove");
 const forceButton = document.getElementById("force");
+const bounceButton = document.getElementById("wallBounce");
+
+const pathButton = document.getElementById("path");
+const removePathButton = document.getElementById("removePath");
 
 //COUNTER
 const counterLabel = document.getElementById("counter");
 
 //SIZE SELECTOR
 const sizeSelect = document.getElementById("ballSize");
+
+//WALL COLLISION VAR
+let doesBounce;
+
+//PATH DRAWING ACTIVE VAR
+let isDrawingPath;
+let clickCounter;
 
 class Ball {
   size = 15;
@@ -69,9 +99,14 @@ class Ball {
     }
 
     this.location = addVectors(this.location, this.speed);
-    this.checkCollision();
 
-    console.log(this.maxSpeed);
+    if (!doesBounce) {
+      this.checkCollision();
+    } else {
+      this.checkCollisionWrap();
+    }
+
+    //console.log(this.maxSpeed);
   }
 
   draw() {
@@ -157,9 +192,10 @@ class Ball {
 
       if (this.distance > 0 && this.distance < this.desiredSeparation) {
         this.diff = subtractVectors(this.location, this.b.location);
-        this.diff = normalizeVector(this.diff);
 
-        this.diff = divideVectors(this.diff, this.distance);
+        this.diff = divideVectors(this.diff, this.distance * this.distance);
+
+        this.diff = normalizeVector(this.diff);
 
         this.sum = addVectors(this.sum, this.diff);
         this.count++;
@@ -186,11 +222,11 @@ class Ball {
         subtractVectors(this.location, this.b.location)
       );
 
-      if (this.distance > this.desiredGroupation) {
+      if (this.b != this && this.distance > this.desiredGroupation) {
         this.diff = subtractVectors(this.b.location, this.location);
         this.diff = normalizeVector(this.diff);
 
-        this.diff = divideVectors(this.diff, this.distance);
+        //this.diff = divideVectors(this.diff, this.distance);
 
         this.sum = addVectors(this.sum, this.diff);
         this.count++;
@@ -240,11 +276,21 @@ class Ball {
 
   checkCollision() {
     if (this.location.x > width || this.location.x < 0) {
-      //this.location.x = 0;
       this.speed.x *= -1;
     } else if (this.location.y + this.size >= height || this.location.y < 0) {
-      //this.location.y = height - 15;
       this.speed.y *= -1;
+    }
+  }
+
+  checkCollisionWrap() {
+    if (this.location.x > width) {
+      this.location.x = 0;
+    } else if (this.location.x < 0) {
+      this.location.x = width;
+    } else if (this.location.y - this.size > height) {
+      this.location.y = 0;
+    } else if (this.location.y < 0) {
+      this.location.y = height - this.size;
     }
   }
 }
@@ -281,6 +327,68 @@ class Cursor {
     canvas.addEventListener("click", (e) => {
       this.location.x = e.x;
       this.location.y = e.y;
+    });
+  }
+}
+
+class Path {
+  radius;
+  points = [];
+
+  constructor(radius) {
+    this.radius = radius;
+  }
+
+  trace() {
+    this.points = [];
+    clickCounter = 1;
+
+    canvas.addEventListener("click", (e) => {
+      if (!isDrawingPath) return;
+      console.log("KOORDINATE MISA KAD SE KLIKNE: " + e.x + e.y);
+      this.points.push({ x: e.x, y: e.y });
+
+      pathButton.innerHTML = "Clicks left: " + (4 - clickCounter);
+
+      if (clickCounter === 4) {
+        console.log(
+          "BROJAC: " +
+            clickCounter +
+            "     TACKE U NIZU: " +
+            JSON.stringify(this.points)
+        );
+
+        pathButton.innerHTML = "Draw path";
+        isDrawingPath = false;
+      }
+      clickCounter++;
+    });
+  }
+
+  draw() {
+    if (this.points.length < 4) {
+      return;
+    }
+
+    path_ctx.beginPath();
+
+    path_ctx.lineTo(this.points[0].x, this.points[0].y);
+    path_ctx.lineTo(this.points[1].x, this.points[1].y);
+    path_ctx.lineTo(this.points[2].x, this.points[2].y);
+    path_ctx.lineTo(this.points[3].x, this.points[3].y);
+
+    path_ctx.lineWidth = this.radius * 2;
+    path_ctx.strokeStyle = "#78aee3";
+    path_ctx.lineCap = "round";
+    path_ctx.stroke();
+  }
+
+  remove() {
+    removePathButton.addEventListener("click", () => {
+      isDrawingPath = false;
+      path_ctx.clearRect(0, 0, width, height);
+      this.points = [];
+      clickCounter = 1;
     });
   }
 }
@@ -402,6 +510,21 @@ function heading(v1) {
   }
 }
 
+function dist(x1, y1, x2, y2) {
+  return Math.sqrt((x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1));
+}
+
+function dot(v1, v2) {
+  if (typeof v1 === "object" && typeof v2 === "object") {
+    let x1 = v1[Object.keys(v1)[0]];
+    let y1 = v1[Object.keys(v1)[1]];
+
+    let x2 = v2[Object.keys(v2)[0]];
+    let y2 = v2[Object.keys(v2)[1]];
+
+    return x1 * x1 + y1 * y2;
+  }
+}
 //===========================================================================END VECTOR FUNCTIONS===========================================================================
 
 let ball;
@@ -413,6 +536,7 @@ let isParkingActive;
 let isSeparated;
 let isGrouped;
 let isWandering;
+let path;
 
 let once;
 
@@ -477,6 +601,31 @@ function removeAllBalls() {
     balls = [];
     counterLabel.innerHTML = balls.length;
     resetToggles();
+  });
+}
+
+function drawPath() {
+  isDrawingPath = false;
+  pathButton.addEventListener("click", () => {
+    isDrawingPath = true;
+    if (isDrawingPath) {
+      pathButton.innerHTML = "Select a point on canvas to start";
+    }
+  });
+}
+
+function toggleWallBounce() {
+  doesBounce = false;
+  bounceButton.addEventListener("click", () => {
+    if (doesBounce) {
+      doesBounce = false;
+      bounceButton.innerHTML = "Turn off wall collision";
+      bounceButton.style.backgroundColor = "";
+    } else {
+      doesBounce = true;
+      bounceButton.innerHTML = "Wall collision is OFF";
+      bounceButton.style.backgroundColor = "#c93c3c";
+    }
   });
 }
 
@@ -734,6 +883,7 @@ function resetToggles() {
 
 function setupAll() {
   cursor = new Cursor((width - 15) / 2, (height - 15) / 2, 20, 20);
+  path = new Path(55);
 
   chooseMode();
   toggleChase();
@@ -743,14 +893,22 @@ function setupAll() {
   toggleGrouping();
   toggleWandering();
 
+  toggleWallBounce();
   removeAllBalls();
+
+  drawPath();
   addBall();
+
+  path.remove();
+  path.trace();
 }
 
 function run() {
   ctx.clearRect(0, 0, width, height);
 
   cursor.draw();
+  path.draw();
+
   drawBalls();
 
   requestAnimationFrame(run);
