@@ -37,8 +37,10 @@ app.appendChild(path_canvas);
 const followButton = document.getElementById("follow");
 const separateButton = document.getElementById("separate");
 const groupButton = document.getElementById("group");
+const alignButton = document.getElementById("align");
 const placeButton = document.getElementById("place");
 const addButton = document.getElementById("add");
+const addHundredButton = document.getElementById("add100");
 const chaseButton = document.getElementById("chase");
 const fleeButton = document.getElementById("flee");
 const wanderButton = document.getElementById("wander");
@@ -46,6 +48,7 @@ const parkButton = document.getElementById("park");
 const removeButton = document.getElementById("remove");
 const forceButton = document.getElementById("force");
 const bounceButton = document.getElementById("wallBounce");
+const avoidButton = document.getElementById("wallAvoid");
 
 const pathButton = document.getElementById("path");
 const removePathButton = document.getElementById("removePath");
@@ -58,6 +61,7 @@ const sizeSelect = document.getElementById("ballSize");
 
 //WALL COLLISION VAR
 let doesBounce;
+let doesAvoid;
 
 //PATH DRAWING ACTIVE VAR
 let isDrawingPath;
@@ -74,7 +78,7 @@ class Ball {
 
   wanderTheta = 0;
 
-  desiredSeparation = 70;
+  desiredSeparation = 25;
   desiredGroupation = 350;
 
   constructor(x, y, size, desiredGroupation, desiredSeparation) {
@@ -193,9 +197,9 @@ class Ball {
       if (this.distance > 0 && this.distance < this.desiredSeparation) {
         this.diff = subtractVectors(this.location, this.b.location);
 
-        this.diff = divideVectors(this.diff, this.distance * this.distance);
-
         this.diff = normalizeVector(this.diff);
+
+        this.diff = divideVectors(this.diff, this.distance);
 
         this.sum = addVectors(this.sum, this.diff);
         this.count++;
@@ -204,8 +208,11 @@ class Ball {
 
     if (this.count > 0) {
       this.sum = divideVectors(this.sum, this.count);
+    }
+
+    if (vectorMagnitude(this.sum) > 0) {
       this.sum = normalizeVector(this.sum);
-      this.sum = multiplyVectors(this.sum, 3);
+      this.sum = multiplyVectors(this.sum, 2);
 
       this.steer = subtractVectors(this.sum, this.speed);
 
@@ -216,17 +223,17 @@ class Ball {
   group(balls) {
     this.sum = { x: 0, y: 0 };
     this.count = 0;
-
+    let perceptionradius = 100;
     for (this.b of balls) {
       this.distance = vectorMagnitude(
         subtractVectors(this.location, this.b.location)
       );
 
-      if (this.b != this && this.distance > this.desiredGroupation) {
+      if (this.b != this && this.distance < perceptionradius) {
         this.diff = subtractVectors(this.b.location, this.location);
         this.diff = normalizeVector(this.diff);
 
-        //this.diff = divideVectors(this.diff, this.distance);
+        this.diff = divideVectors(this.diff, this.distance);
 
         this.sum = addVectors(this.sum, this.diff);
         this.count++;
@@ -241,7 +248,36 @@ class Ball {
 
       this.steer = subtractVectors(this.sum, this.speed);
 
-      this.addForce(limit(this.steer, this.maxForce));
+      this.addForce(limit(this.steer, 0.01));
+    }
+  }
+
+  align(balls) {
+    let sum = { x: 0, y: 0 };
+    let perceptionradius = 100;
+    let count = 0;
+
+    for (let b of balls) {
+      let d = dist(
+        this.location.x,
+        this.location.y,
+        b.location.x,
+        b.location.y
+      );
+
+      if (d > 0 && d < perceptionradius) {
+        sum = addVectors(sum, b.speed);
+        count++;
+      }
+    }
+
+    if (count > 0) {
+      sum = divideVectors(sum, count);
+      sum = normalizeVector(sum);
+      sum = multiplyVectors(sum, 1.5);
+
+      let steer = subtractVectors(sum, this.speed);
+      this.addForce(limit(steer, this.maxForce));
     }
   }
 
@@ -274,6 +310,56 @@ class Ball {
     this.seek(this.target);
   }
 
+  follow(path) {
+    let predict = this.speed;
+    predict = normalizeVector(predict);
+    predict = multiplyVectors(predict, 50);
+
+    console.log("PREDICT: " + JSON.stringify(predict));
+
+    let predictpos = addVectors(this.location, predict);
+
+    console.log("PREDICTPOS: " + JSON.stringify(predictpos));
+    console.log("PATH POINTS: " + JSON.stringify(path.points));
+
+    let target;
+    let record = 100000;
+
+    for (let i = 0; i < path.points.length - 1; i++) {
+      let a = path.points[i];
+      let b = path.points[i + 1];
+
+      this.normalPoint = getNormalPoint(predictpos, a, b);
+      if (
+        this.normalPoint.x < Math.min(a.x, b.x) ||
+        this.normalPoint.x > Math.max(a.x, b.x)
+      ) {
+        this.normalPoint = b;
+      }
+
+      let distance = dist(
+        predictpos.x,
+        predictpos.y,
+        this.normalPoint.x,
+        this.normalPoint.y
+      );
+
+      if (distance < record) {
+        record = distance;
+
+        let dir = subtractVectors(b, a);
+        dir = normalizeVector(dir);
+
+        dir = multiplyVectors(dir, 0.5);
+        target = this.normalPoint;
+        target = addVectors(target, dir);
+      }
+    }
+    if (record > path.radius) {
+      this.seek(target);
+    }
+  }
+
   checkCollision() {
     if (this.location.x > width || this.location.x < 0) {
       this.speed.x *= -1;
@@ -287,10 +373,38 @@ class Ball {
       this.location.x = 0;
     } else if (this.location.x < 0) {
       this.location.x = width;
-    } else if (this.location.y - this.size > height) {
+    }
+
+    if (this.location.y - this.size > height) {
       this.location.y = 0;
     } else if (this.location.y < 0) {
       this.location.y = height - this.size;
+    }
+  }
+
+  avoidWalls() {
+    let d = 75;
+    let desired = null;
+
+    if (this.location.x < d) {
+      desired = { x: this.maxSpeed, y: this.speed.y };
+    } else if (this.location.x > width - d) {
+      desired = { x: -this.maxSpeed, y: this.speed.y };
+    }
+
+    if (this.location.y < d) {
+      desired = { x: this.speed.x, y: this.maxSpeed };
+    } else if (this.location.y > height - d) {
+      desired = { x: this.speed.x, y: -this.maxSpeed };
+    }
+
+    if (desired !== null) {
+      desired = normalizeVector(desired);
+
+      desired = multiplyVectors(desired, this.maxSpeed);
+
+      let steer = subtractVectors(desired, this.speed);
+      this.addForce(limit(steer, this.maxForce));
     }
   }
 }
@@ -377,8 +491,8 @@ class Path {
     path_ctx.lineTo(this.points[2].x, this.points[2].y);
     path_ctx.lineTo(this.points[3].x, this.points[3].y);
 
-    path_ctx.lineWidth = this.radius * 2;
-    path_ctx.strokeStyle = "#78aee3";
+    path_ctx.lineWidth = 5;
+    path_ctx.strokeStyle = "red";
     path_ctx.lineCap = "round";
     path_ctx.stroke();
   }
@@ -390,6 +504,18 @@ class Path {
       this.points = [];
       clickCounter = 1;
     });
+  }
+}
+
+class Box {
+  width = 1400;
+  height = 900;
+  x = canvas.width / 2 - this.width / 2;
+  y = canvas.height / 2 - this.height / 2;
+  constructor() {}
+
+  draw() {
+    ctx.strokeRect(this.x, this.y, this.width, this.height);
   }
 }
 
@@ -522,8 +648,22 @@ function dot(v1, v2) {
     let x2 = v2[Object.keys(v2)[0]];
     let y2 = v2[Object.keys(v2)[1]];
 
-    return x1 * x1 + y1 * y2;
+    return x1 * x2 + y1 * y2;
   }
+}
+
+function getNormalPoint(p, a, b) {
+  let ap = subtractVectors(p, a);
+  let ab = subtractVectors(b, a);
+
+  ab = normalizeVector(ab);
+
+  ab = multiplyVectors(ab, dot(ap, ab));
+
+  // console.log("AP: " + JSON.stringify(ap));
+  // console.log("AB: " + JSON.stringify(ab));
+
+  return addVectors(a, ab);
 }
 //===========================================================================END VECTOR FUNCTIONS===========================================================================
 
@@ -535,10 +675,13 @@ let isFleeActive;
 let isParkingActive;
 let isSeparated;
 let isGrouped;
+let isAligned;
 let isWandering;
 let path;
 
-let once;
+let box = null;
+
+let onceWander;
 
 function chooseMode() {
   followButton.addEventListener("click", () => {
@@ -556,9 +699,39 @@ function chooseMode() {
   });
 }
 
+function addHundredBalls() {
+  addHundredButton.addEventListener("click", () => {
+    for (let i = 0; i < 100; i++) {
+      onceWander = false;
+      let radius = 15;
+      switch (sizeSelect.value) {
+        case "small":
+          radius = 5;
+          break;
+        case "medium":
+          radius = 10;
+          break;
+        case "large":
+          radius = 15;
+          break;
+      }
+      const x = Math.floor(Math.random() * (width - radius * radius) + radius);
+      const y = Math.floor(Math.random() * (height - radius * radius) + radius);
+      const desiredGroupation = radius * 25;
+      const desiredSeparation = 30;
+
+      const b = new Ball(x, y, radius, desiredGroupation, desiredSeparation);
+
+      balls.push(b);
+      console.log("No of balls is: " + balls.length);
+      counterLabel.innerHTML = balls.length;
+    }
+  });
+}
+
 function addBall() {
   addButton.addEventListener("click", () => {
-    once = false;
+    onceWander = false;
     let radius = 15;
     switch (sizeSelect.value) {
       case "small":
@@ -574,12 +747,9 @@ function addBall() {
     const x = Math.floor(Math.random() * (width - radius * radius) + radius);
     const y = Math.floor(Math.random() * (height - radius * radius) + radius);
     const desiredGroupation = radius * 25;
-    const desiredSeparation = radius * 5;
+    const desiredSeparation = radius * 3;
 
     const b = new Ball(x, y, radius, desiredGroupation, desiredSeparation);
-
-    console.log("DESIRED SEPARATION: " + desiredSeparation);
-    console.log("DESIRED GROUPATION: " + desiredGroupation);
 
     balls.push(b);
     console.log("No of balls is: " + balls.length);
@@ -629,6 +799,31 @@ function toggleWallBounce() {
   });
 }
 
+function toggleWallAvoid() {
+  doesAvoid = false;
+  avoidButton.addEventListener("click", () => {
+    if (doesAvoid) {
+      doesAvoid = false;
+      removeBox();
+      avoidButton.innerHTML = "Turn on wall avoiding";
+      avoidButton.style.backgroundColor = "";
+    } else {
+      doesAvoid = true;
+      drawBox();
+      avoidButton.innerHTML = "Wall avoiding is ON";
+      avoidButton.style.backgroundColor = "#61d44c";
+    }
+  });
+}
+
+function drawBox() {
+  box = new Box();
+}
+
+function removeBox() {
+  box = null;
+}
+
 function drawBalls() {
   if (isChaseActive) {
     for (let b of balls) {
@@ -637,16 +832,20 @@ function drawBalls() {
       b.maxForce = 0.08;
       isSeparated ? b.separate(balls) : "";
       isGrouped ? b.group(balls) : "";
+      isAligned ? b.align(balls) : "";
+      doesAvoid ? b.avoidWalls() : "";
       b.seek(cursor.location);
       b.acceleration = multiplyVectors(b.acceleration, 0); // OVO MICE OPCIJU DODAVANJA SILE JER MNOZI UBRZANJE SA NULOM JELTE AKO JE U OVOM ELSE-U TAKO DA JE DOBRO SAD
     }
   } else if (isFleeActive) {
     for (let b of balls) {
       b.draw();
-      b.maxSpeed = 6;
+      b.maxSpeed = isGrouped || isAligned ? 0.8 : 2;
       b.maxForce = 0.08;
       isSeparated ? b.separate(balls) : "";
       isGrouped ? b.group(balls) : "";
+      isAligned ? b.align(balls) : "";
+      doesAvoid ? b.avoidWalls() : "";
       b.flee(cursor);
       b.acceleration = multiplyVectors(b.acceleration, 0);
     }
@@ -654,9 +853,11 @@ function drawBalls() {
     for (let b of balls) {
       b.draw();
       b.maxSpeed = 6;
-      b.maxForce = 0.08;
+      b.maxForce = 0.05;
       isSeparated ? b.separate(balls) : "";
       isGrouped ? b.group(balls) : "";
+      isAligned ? b.align(balls) : "";
+      doesAvoid ? b.avoidWalls() : "";
       b.seekAndStop(cursor);
       b.separate(balls);
       b.acceleration = multiplyVectors(b.acceleration, 0);
@@ -664,27 +865,38 @@ function drawBalls() {
   } else if (isWandering) {
     for (let b of balls) {
       b.draw();
+      b.maxSpeed = isGrouped || isAligned ? 0.8 : 2;
+      b.maxForce = 0.05;
+      isGrouped ? b.group(balls) : "";
+      isSeparated ? b.separate(balls) : "";
+      isAligned ? b.align(balls) : "";
+      if (!onceWander) {
+        b.addForce({ x: 0.000000001, y: 0 });
+        console.log("UBRZANJE " + JSON.stringify(b.acceleration));
+        console.log("SILA DODATA ");
+      }
+      doesAvoid ? b.avoidWalls() : "";
+      b.wander();
+      b.acceleration = multiplyVectors(b.acceleration, 0);
+    }
+    onceWander = true;
+  } else {
+    for (let b of balls) {
+      b.draw();
       b.maxSpeed = 2;
       b.maxForce = 0.05;
       isGrouped ? b.group(balls) : "";
       isSeparated ? b.separate(balls) : "";
-      if (!once) {
-        b.addForce({ x: 0.00001, y: 0 });
-        console.log("UBRZANJE " + JSON.stringify(b.acceleration));
-        console.log("SILA DODATA ");
+      isAligned ? b.align(balls) : "";
+
+      if (path.points.length === 4) {
+        b.maxSpeed = 2;
+        b.maxForce = 0.05;
+        b.follow(path);
       }
-      b.wander();
-      b.acceleration = multiplyVectors(b.acceleration, 0);
-    }
-    once = true;
-  } else {
-    for (let b of balls) {
-      b.draw();
-      b.maxSpeed = 6;
-      b.maxForce = 0.08;
-      isGrouped ? b.group(balls) : "";
-      isSeparated ? b.separate(balls) : "";
+      doesAvoid ? b.avoidWalls() : "";
       b.move();
+
       b.acceleration = multiplyVectors(b.acceleration, 0);
     }
   }
@@ -720,6 +932,23 @@ function toggleGrouping() {
 
       groupButton.innerHTML = "Grouping is ON";
       groupButton.style.backgroundColor = "#61d44c";
+    }
+  });
+}
+
+function toggleAlignment() {
+  isAligned = false;
+  alignButton.addEventListener("click", () => {
+    if (isAligned) {
+      isAligned = false;
+
+      alignButton.innerHTML = "Toggle alignment";
+      alignButton.style.backgroundColor = "";
+    } else {
+      isAligned = true;
+
+      alignButton.innerHTML = "Alignment is ON";
+      alignButton.style.backgroundColor = "#61d44c";
     }
   });
 }
@@ -843,7 +1072,7 @@ function toggleWandering() {
       console.log("OFF");
     } else {
       isWandering = true;
-      once = false;
+      onceWander = false;
       console.log("ON");
       wanderButton.style.backgroundColor = "#c93c3c";
       wanderButton.innerHTML = "Wandering";
@@ -883,7 +1112,7 @@ function resetToggles() {
 
 function setupAll() {
   cursor = new Cursor((width - 15) / 2, (height - 15) / 2, 20, 20);
-  path = new Path(55);
+  path = new Path(35);
 
   chooseMode();
   toggleChase();
@@ -892,12 +1121,17 @@ function setupAll() {
   toggleParking();
   toggleGrouping();
   toggleWandering();
+  toggleAlignment();
 
   toggleWallBounce();
+  toggleWallAvoid();
   removeAllBalls();
 
   drawPath();
   addBall();
+  addHundredBalls();
+  drawBox();
+  removeBox();
 
   path.remove();
   path.trace();
@@ -910,6 +1144,7 @@ function run() {
   path.draw();
 
   drawBalls();
+  if (typeof box !== "undefined" && box != null) box.draw();
 
   requestAnimationFrame(run);
 }

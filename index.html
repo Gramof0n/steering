@@ -49,6 +49,14 @@
       font-family: monospace;
       color: white;
     }
+
+    .side-section {
+      margin-bottom: 20px;
+    }
+
+    .side-section div {
+      padding: 10px;
+    }
   </style>
   <body>
     <section class="wrapper">
@@ -57,8 +65,9 @@
         <div class="label">
           <span>Number of balls: </span><span id="counter">0</span>
         </div>
-        <div>
+        <div class="side-section">
           <button id="add">Add a ball</button>
+          <button id="add100">+100</button>
           <label for="ballSize" class="size-label">Ball size: </label>
           <select name="ballSize" id="ballSize">
             <option value="small">Small</option>
@@ -67,10 +76,11 @@
           </select>
         </div>
         <button id="wallBounce">Turn off wall collision</button>
+        <button id="wallAvoid">Turn on wall avoiding</button>
         <button id="remove" style="background-color: #c93c3c">
           Clear all balls
         </button>
-        <div>
+        <div class="side-section">
           <button id="path">Draw path</button>
           <button id="removePath" style="background-color: #c93c3c">
             Remove path
@@ -80,6 +90,7 @@
       <article>
         <button id="separate">Toggle separation</button>
         <button id="group">Toggle grouping</button>
+        <button id="align">Toggle alignment</button>
         <button id="wander">Wander</button>
         <button id="chase">Chase</button>
         <button id="flee">Flee</button>
