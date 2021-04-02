@@ -21,9 +21,7 @@ app.appendChild(canvas);
 
 //SETUP PATH CANVAS
 const path_canvas = document.createElement("canvas");
-
 const path_ctx = path_canvas.getContext("2d");
-
 path_canvas.id = "path_canvas";
 path_canvas.width = width;
 path_canvas.height = height;
@@ -53,6 +51,9 @@ const avoidButton = document.getElementById("wallAvoid");
 const pathButton = document.getElementById("path");
 const removePathButton = document.getElementById("removePath");
 
+const ballButton = document.getElementById("ball");
+const triangleButton = document.getElementById("triangle");
+
 //COUNTER
 const counterLabel = document.getElementById("counter");
 
@@ -63,11 +64,15 @@ const sizeSelect = document.getElementById("ballSize");
 let doesBounce;
 let doesAvoid;
 
+//BOID SHAPE
+let isBall = true;
+let isTriangle;
+
 //PATH DRAWING ACTIVE VAR
 let isDrawingPath;
 let clickCounter;
 
-class Ball {
+class Boid {
   size = 15;
   location = { x: 0, y: 0 };
   speed = { x: 0, y: 0 };
@@ -78,6 +83,11 @@ class Ball {
 
   wanderTheta = 0;
 
+  //TRIANGLE STUFF
+  height = 20;
+  width = 15;
+  trianglePoints = [];
+
   desiredSeparation = 25;
   desiredGroupation = 350;
 
@@ -87,10 +97,38 @@ class Ball {
     this.desiredGroupation = desiredGroupation;
     this.desiredSeparation = desiredSeparation;
     this.size = size;
-    ctx.beginPath();
-    ctx.arc(this.location.x, this.location.y, this.size, 0, Math.PI * 2);
-    ctx.closePath();
-    ctx.stroke();
+
+    this.trianglePoints = [
+      //top
+      {
+        x: this.location.x - this.width / 2,
+        y: this.location.y + this.height / 2,
+      },
+      //bottom right
+      {
+        x: this.location.x + this.width / 2,
+        y: this.location.y + this.height / 2,
+      },
+      //bottom left
+      { x: this.location.x, y: this.location.y - this.height / 2 },
+    ];
+    if (isTriangle) {
+      ctx.beginPath();
+      ctx.moveTo(this.trianglePoints[0].x, this.trianglePoints[0].y);
+      ctx.lineTo(this.trianglePoints[2].x, this.trianglePoints[2].y);
+      ctx.lineTo(this.trianglePoints[1].x, this.trianglePoints[1].y);
+      ctx.lineTo(this.trianglePoints[0].x, this.trianglePoints[0].y);
+
+      console.log(this.trianglePoints[0].x, this.trianglePoints[0].y);
+      ctx.closePath();
+      ctx.stroke();
+      console.log("TRIANGLE");
+    } else {
+      ctx.beginPath();
+      ctx.arc(this.location.x, this.location.y, this.size, 0, Math.PI * 2);
+      ctx.closePath();
+      ctx.stroke();
+    }
   }
 
   move() {
@@ -114,10 +152,40 @@ class Ball {
   }
 
   draw() {
-    ctx.beginPath();
-    ctx.arc(this.location.x, this.location.y, this.size, 0, Math.PI * 2);
-    ctx.closePath();
-    ctx.stroke();
+    if (isTriangle) {
+      this.trianglePoints = [
+        //top
+        {
+          x: this.height,
+          y: 0,
+        },
+        //bottom right
+        {
+          x: 0,
+          y: 0 - this.width / 2,
+        },
+        //bottom left
+        { x: 0, y: 0 + this.width / 2 },
+      ];
+
+      let angle = Math.atan2(this.speed.y, this.speed.x);
+      ctx.save();
+      ctx.translate(this.location.x, this.location.y);
+      ctx.rotate(angle);
+      ctx.beginPath();
+      ctx.moveTo(this.trianglePoints[0].x, this.trianglePoints[0].y);
+      ctx.lineTo(this.trianglePoints[2].x, this.trianglePoints[2].y);
+      ctx.lineTo(this.trianglePoints[1].x, this.trianglePoints[1].y);
+      ctx.lineTo(this.trianglePoints[0].x, this.trianglePoints[0].y);
+      ctx.closePath();
+      ctx.stroke();
+      ctx.restore();
+    } else {
+      ctx.beginPath();
+      ctx.arc(this.location.x, this.location.y, this.size, 0, Math.PI * 2);
+      ctx.closePath();
+      ctx.stroke();
+    }
   }
 
   fall() {
@@ -667,8 +735,8 @@ function getNormalPoint(p, a, b) {
 }
 //===========================================================================END VECTOR FUNCTIONS===========================================================================
 
-let ball;
-let balls = [];
+let boid;
+let boids = [];
 let cursor;
 let isChaseActive;
 let isFleeActive;
@@ -699,7 +767,23 @@ function chooseMode() {
   });
 }
 
-function addHundredBalls() {
+function chooseBoidShape() {
+  ballButton.addEventListener("click", () => {
+    isBall = true;
+    isTriangle = false;
+    ballButton.disabled = true;
+    triangleButton.disabled = false;
+  });
+
+  triangleButton.addEventListener("click", () => {
+    isBall = false;
+    isTriangle = true;
+    ballButton.disabled = false;
+    triangleButton.disabled = true;
+  });
+}
+
+function addHundredBoids() {
   addHundredButton.addEventListener("click", () => {
     for (let i = 0; i < 100; i++) {
       onceWander = false;
@@ -720,16 +804,16 @@ function addHundredBalls() {
       const desiredGroupation = radius * 25;
       const desiredSeparation = 30;
 
-      const b = new Ball(x, y, radius, desiredGroupation, desiredSeparation);
+      const b = new Boid(x, y, radius, desiredGroupation, desiredSeparation);
 
-      balls.push(b);
-      console.log("No of balls is: " + balls.length);
-      counterLabel.innerHTML = balls.length;
+      boids.push(b);
+      console.log("No of balls is: " + boids.length);
+      counterLabel.innerHTML = boids.length;
     }
   });
 }
 
-function addBall() {
+function addBoid() {
   addButton.addEventListener("click", () => {
     onceWander = false;
     let radius = 15;
@@ -749,17 +833,17 @@ function addBall() {
     const desiredGroupation = radius * 25;
     const desiredSeparation = radius * 3;
 
-    const b = new Ball(x, y, radius, desiredGroupation, desiredSeparation);
+    const b = new Boid(x, y, radius, desiredGroupation, desiredSeparation);
 
-    balls.push(b);
-    console.log("No of balls is: " + balls.length);
-    counterLabel.innerHTML = balls.length;
+    boids.push(b);
+    console.log("No of balls is: " + boids.length);
+    counterLabel.innerHTML = boids.length;
   });
 }
 
 function addForce() {
   forceButton.addEventListener("click", () => {
-    for (let b of balls) {
+    for (let b of boids) {
       b.addForce({ x: 0.01, y: 0 });
       console.log(b.acceleration);
     }
@@ -768,8 +852,8 @@ function addForce() {
 
 function removeAllBalls() {
   removeButton.addEventListener("click", () => {
-    balls = [];
-    counterLabel.innerHTML = balls.length;
+    boids = [];
+    counterLabel.innerHTML = boids.length;
     resetToggles();
   });
 }
@@ -824,52 +908,52 @@ function removeBox() {
   box = null;
 }
 
-function drawBalls() {
+function drawBoids() {
   if (isChaseActive) {
-    for (let b of balls) {
+    for (let b of boids) {
       b.draw();
       b.maxSpeed = 6;
       b.maxForce = 0.08;
-      isSeparated ? b.separate(balls) : "";
-      isGrouped ? b.group(balls) : "";
-      isAligned ? b.align(balls) : "";
+      isSeparated ? b.separate(boids) : "";
+      isGrouped ? b.group(boids) : "";
+      isAligned ? b.align(boids) : "";
       doesAvoid ? b.avoidWalls() : "";
       b.seek(cursor.location);
       b.acceleration = multiplyVectors(b.acceleration, 0); // OVO MICE OPCIJU DODAVANJA SILE JER MNOZI UBRZANJE SA NULOM JELTE AKO JE U OVOM ELSE-U TAKO DA JE DOBRO SAD
     }
   } else if (isFleeActive) {
-    for (let b of balls) {
+    for (let b of boids) {
       b.draw();
       b.maxSpeed = isGrouped || isAligned ? 0.8 : 2;
       b.maxForce = 0.08;
-      isSeparated ? b.separate(balls) : "";
-      isGrouped ? b.group(balls) : "";
-      isAligned ? b.align(balls) : "";
+      isSeparated ? b.separate(boids) : "";
+      isGrouped ? b.group(boids) : "";
+      isAligned ? b.align(boids) : "";
       doesAvoid ? b.avoidWalls() : "";
       b.flee(cursor);
       b.acceleration = multiplyVectors(b.acceleration, 0);
     }
   } else if (isParkingActive) {
-    for (let b of balls) {
+    for (let b of boids) {
       b.draw();
       b.maxSpeed = 6;
       b.maxForce = 0.05;
-      isSeparated ? b.separate(balls) : "";
-      isGrouped ? b.group(balls) : "";
-      isAligned ? b.align(balls) : "";
+      isSeparated ? b.separate(boids) : "";
+      isGrouped ? b.group(boids) : "";
+      isAligned ? b.align(boids) : "";
       doesAvoid ? b.avoidWalls() : "";
       b.seekAndStop(cursor);
-      b.separate(balls);
+      b.separate(boids);
       b.acceleration = multiplyVectors(b.acceleration, 0);
     }
   } else if (isWandering) {
-    for (let b of balls) {
+    for (let b of boids) {
       b.draw();
       b.maxSpeed = isGrouped || isAligned ? 0.8 : 2;
       b.maxForce = 0.05;
-      isGrouped ? b.group(balls) : "";
-      isSeparated ? b.separate(balls) : "";
-      isAligned ? b.align(balls) : "";
+      isGrouped ? b.group(boids) : "";
+      isSeparated ? b.separate(boids) : "";
+      isAligned ? b.align(boids) : "";
       if (!onceWander) {
         b.addForce({ x: 0.000000001, y: 0 });
         console.log("UBRZANJE " + JSON.stringify(b.acceleration));
@@ -881,13 +965,13 @@ function drawBalls() {
     }
     onceWander = true;
   } else {
-    for (let b of balls) {
+    for (let b of boids) {
       b.draw();
       b.maxSpeed = 2;
       b.maxForce = 0.05;
-      isGrouped ? b.group(balls) : "";
-      isSeparated ? b.separate(balls) : "";
-      isAligned ? b.align(balls) : "";
+      isGrouped ? b.group(boids) : "";
+      isSeparated ? b.separate(boids) : "";
+      isAligned ? b.align(boids) : "";
 
       if (path.points.length === 4) {
         b.maxSpeed = 2;
@@ -1114,6 +1198,7 @@ function setupAll() {
   cursor = new Cursor((width - 15) / 2, (height - 15) / 2, 20, 20);
   path = new Path(35);
 
+  chooseBoidShape();
   chooseMode();
   toggleChase();
   toggleFlee();
@@ -1128,8 +1213,8 @@ function setupAll() {
   removeAllBalls();
 
   drawPath();
-  addBall();
-  addHundredBalls();
+  addBoid();
+  addHundredBoids();
   drawBox();
   removeBox();
 
@@ -1143,7 +1228,7 @@ function run() {
   cursor.draw();
   path.draw();
 
-  drawBalls();
+  drawBoids();
   if (typeof box !== "undefined" && box != null) box.draw();
 
   requestAnimationFrame(run);

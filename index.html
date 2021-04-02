@@ -63,12 +63,16 @@
       <div id="app"></div>
       <article>
         <div class="label">
-          <span>Number of balls: </span><span id="counter">0</span>
+          <span>Number of boids: </span><span id="counter">0</span>
+        </div>
+        <div>
+          <button id="ball" disabled>Boid type - ball</button>
+          <button id="triangle">Boid type - triangle</button>
         </div>
         <div class="side-section">
-          <button id="add">Add a ball</button>
+          <button id="add">Add a boid</button>
           <button id="add100">+100</button>
-          <label for="ballSize" class="size-label">Ball size: </label>
+          <label for="ballSize" class="size-label">Boid size: </label>
           <select name="ballSize" id="ballSize">
             <option value="small">Small</option>
             <option value="medium">Medium</option>
@@ -78,7 +82,7 @@
         <button id="wallBounce">Turn off wall collision</button>
         <button id="wallAvoid">Turn on wall avoiding</button>
         <button id="remove" style="background-color: #c93c3c">
-          Clear all balls
+          Clear all boids
         </button>
         <div class="side-section">
           <button id="path">Draw path</button>
