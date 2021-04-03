@@ -57,8 +57,9 @@ const triangleButton = document.getElementById("triangle");
 //COUNTER
 const counterLabel = document.getElementById("counter");
 
-//SIZE SELECTOR
+//SELECTORS
 const sizeSelect = document.getElementById("ballSize");
+const FOVSelect = document.getElementById("FOV");
 
 //WALL COLLISION VAR
 let doesBounce;
@@ -71,6 +72,9 @@ let isTriangle;
 //PATH DRAWING ACTIVE VAR
 let isDrawingPath;
 let clickCounter;
+
+//VIEW ANGLE
+let FOV;
 
 class Boid {
   size = 15;
@@ -91,12 +95,14 @@ class Boid {
   desiredSeparation = 25;
   desiredGroupation = 350;
 
-  constructor(x, y, size, desiredGroupation, desiredSeparation) {
+  constructor(x, y, size, desiredGroupation, desiredSeparation, height, width) {
     this.location.x = x;
     this.location.y = y;
     this.desiredGroupation = desiredGroupation;
     this.desiredSeparation = desiredSeparation;
     this.size = size;
+    this.height = height;
+    this.width = width;
 
     this.trianglePoints = [
       //top
@@ -126,6 +132,7 @@ class Boid {
     } else {
       ctx.beginPath();
       ctx.arc(this.location.x, this.location.y, this.size, 0, Math.PI * 2);
+
       ctx.closePath();
       ctx.stroke();
     }
@@ -178,13 +185,20 @@ class Boid {
       ctx.lineTo(this.trianglePoints[1].x, this.trianglePoints[1].y);
       ctx.lineTo(this.trianglePoints[0].x, this.trianglePoints[0].y);
       ctx.closePath();
+
       ctx.stroke();
+      ctx.fillStyle = "#308891";
+      ctx.fill();
+
       ctx.restore();
     } else {
       ctx.beginPath();
       ctx.arc(this.location.x, this.location.y, this.size, 0, Math.PI * 2);
       ctx.closePath();
+
       ctx.stroke();
+      ctx.fillStyle = "#308891";
+      ctx.fill();
     }
   }
 
@@ -292,6 +306,7 @@ class Boid {
     this.sum = { x: 0, y: 0 };
     this.count = 0;
     let perceptionradius = 100;
+
     for (this.b of balls) {
       this.distance = vectorMagnitude(
         subtractVectors(this.location, this.b.location)
@@ -322,8 +337,11 @@ class Boid {
 
   align(balls) {
     let sum = { x: 0, y: 0 };
-    let perceptionradius = 100;
     let count = 0;
+    let sightDist = 100;
+    FOV = setFOV();
+
+    console.log(FOV);
 
     for (let b of balls) {
       let d = dist(
@@ -333,7 +351,14 @@ class Boid {
         b.location.y
       );
 
-      if (d > 0 && d < perceptionradius) {
+      let comparison = subtractVectors(b.location, this.location);
+
+      let diff = Math.atan2(
+        comparison.y - this.speed.y,
+        comparison.x - this.speed.x
+      );
+
+      if (d > 0 && d < sightDist && diff < FOV) {
         sum = addVectors(sum, b.speed);
         count++;
       }
@@ -350,11 +375,11 @@ class Boid {
   }
 
   wander() {
-    this.wanderCircleRadius = 300; //BILO 300
-    this.wanderCircleDistance = 50; //BILO 50
-    this.changeInterval = 30; //BILO 30, 50 JE TAKODJE DOBRO
+    this.wanderCircleRadius = 25; //BILO 300
+    this.wanderCircleDistance = 80; //BILO 50
+    this.changeInterval = 0.3; //BILO 30, 50 JE TAKODJE DOBRO
     this.wanderTheta +=
-      Math.random() * this.changeInterval - this.changeInterval;
+      Math.random() * (this.changeInterval * 2) - this.changeInterval;
 
     //AKO OVO NE RADI INICIJALIZUJ SPEED VEKTOR SA NEKIM BEZVEZE VRIJEDNOSTIMA
     this.circlePosition = this.speed;
@@ -788,24 +813,39 @@ function addHundredBoids() {
     for (let i = 0; i < 100; i++) {
       onceWander = false;
       let radius = 15;
+      let w = 15;
+      let h = 20;
       switch (sizeSelect.value) {
         case "small":
           radius = 5;
+          h = 15;
+          w = 10;
           break;
         case "medium":
           radius = 10;
+          h = 20;
+          w = 15;
           break;
         case "large":
           radius = 15;
+          h = 25;
+          w = 20;
           break;
       }
       const x = Math.floor(Math.random() * (width - radius * radius) + radius);
       const y = Math.floor(Math.random() * (height - radius * radius) + radius);
       const desiredGroupation = radius * 25;
-      const desiredSeparation = 30;
+      const desiredSeparation = radius * 3;
 
-      const b = new Boid(x, y, radius, desiredGroupation, desiredSeparation);
-
+      const b = new Boid(
+        x,
+        y,
+        radius,
+        desiredGroupation,
+        desiredSeparation,
+        h,
+        w
+      );
       boids.push(b);
       console.log("No of balls is: " + boids.length);
       counterLabel.innerHTML = boids.length;
@@ -817,15 +857,23 @@ function addBoid() {
   addButton.addEventListener("click", () => {
     onceWander = false;
     let radius = 15;
+    let w = 15;
+    let h = 20;
     switch (sizeSelect.value) {
       case "small":
         radius = 5;
+        h = 15;
+        w = 10;
         break;
       case "medium":
         radius = 10;
+        h = 20;
+        w = 15;
         break;
       case "large":
         radius = 15;
+        h = 25;
+        w = 20;
         break;
     }
     const x = Math.floor(Math.random() * (width - radius * radius) + radius);
@@ -833,7 +881,17 @@ function addBoid() {
     const desiredGroupation = radius * 25;
     const desiredSeparation = radius * 3;
 
-    const b = new Boid(x, y, radius, desiredGroupation, desiredSeparation);
+    const b = new Boid(
+      x,
+      y,
+      radius,
+      desiredGroupation,
+      desiredSeparation,
+      h,
+      w
+    );
+
+    console.log(b);
 
     boids.push(b);
     console.log("No of balls is: " + boids.length);
@@ -906,6 +964,25 @@ function drawBox() {
 
 function removeBox() {
   box = null;
+}
+
+function setFOV() {
+  switch (FOVSelect.value) {
+    case "30":
+      return Math.PI / 6;
+    case "45":
+      return Math.PI / 4;
+    case "60":
+      return Math.PI / 3;
+    case "90":
+      return Math.PI / 2;
+    case "180":
+      return Math.PI;
+    case "270":
+      return 3 * (Math.PI / 2);
+    case "360":
+      return Math.PI * 2;
+  }
 }
 
 function drawBoids() {
@@ -1171,6 +1248,7 @@ function resetToggles() {
   isSeparated = false;
   isGrouped = false;
   isWandering = false;
+  isAligned = false;
 
   parkButton.style.backgroundColor = "";
   parkButton.innerHTML = "Park at square";
@@ -1192,6 +1270,9 @@ function resetToggles() {
 
   wanderButton.style.backgroundColor = "";
   wanderButton.innerHTML = "Wander";
+
+  alignButton.innerHTML = "Toggle alignment";
+  alignButton.style.backgroundColor = "";
 }
 
 function setupAll() {
