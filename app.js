@@ -272,6 +272,7 @@ class Boid {
     this.count = 0;
 
     for (this.b of balls) {
+      console.log("SEP" + this.b);
       this.distance = vectorMagnitude(
         subtractVectors(this.location, this.b.location)
       );
@@ -609,6 +610,158 @@ class Box {
 
   draw() {
     ctx.strokeRect(this.x, this.y, this.width, this.height);
+  }
+}
+
+class Rectangle {
+  constructor(x, y, w, h) {
+    this.x = x;
+    this.y = y;
+    this.h = h;
+    this.w = w;
+  }
+
+  contains(boid) {
+    return (
+      boid.location.x >= this.x - this.w &&
+      boid.location.x <= this.x + this.w &&
+      boid.location.y >= this.y - this.h &&
+      boid.location.y <= this.y + this.h
+    );
+  }
+
+  intersects(range) {
+    return !(
+      range.x - range.w >= this.x + this.w ||
+      range.x + range.w <= this.x - this.w ||
+      range.y - range.h >= this.y + this.h ||
+      range.y + range.h <= this.y - this.h
+    );
+  }
+}
+
+class Circle {
+  constructor(x, y, r) {
+    this.x = x;
+    this.y = y;
+    this.r = r;
+    this.rSquared = this.r * this.r;
+  }
+
+  contains(boid) {
+    let d =
+      Math.pow(boid.location.x - this.x, 2) +
+      Math.pow(boid.location.y - this.y, 2);
+    return d <= this.rSquared;
+  }
+
+  intersects(range) {
+    var xDist = Math.abs(range.x - this.x);
+    var yDist = Math.abs(range.y - this.y);
+
+    var r = this.r;
+
+    var w = range.w;
+    var h = range.h;
+
+    var edges = Math.pow(xDist - w, 2) + Math.pow(yDist - h, 2);
+
+    if (xDist > r + w || yDist > r + h) return false;
+
+    if (xDist <= w || yDist <= h) return true;
+
+    return edges <= this.rSquared;
+  }
+}
+
+class QuadTree {
+  constructor(boundary, n) {
+    this.boundary = boundary;
+    this.capacity = n;
+    this.boids = [];
+    this.divided = false;
+  }
+
+  subdivide() {
+    let x = this.boundary.x;
+    let y = this.boundary.y;
+    let w = this.boundary.w;
+    let h = this.boundary.h;
+
+    let ne = new Rectangle(x + w / 2, y - h / 2, w / 2, h / 2);
+    this.northeast = new QuadTree(ne, this.capacity);
+    let nw = new Rectangle(x - w / 2, y - h / 2, w / 2, h / 2);
+    this.northwest = new QuadTree(nw, this.capacity);
+    let se = new Rectangle(x + w / 2, y + h / 2, w / 2, h / 2);
+    this.southeast = new QuadTree(se, this.capacity);
+    let sw = new Rectangle(x - w / 2, y + h / 2, w / 2, h / 2);
+    this.southwest = new QuadTree(sw, this.capacity);
+    this.divided = true;
+  }
+
+  insert(boid) {
+    if (!this.boundary.contains(boid)) {
+      return false;
+    }
+
+    if (this.boids.length < this.capacity) {
+      this.boids.push(boid);
+      return true;
+    } else {
+      if (!this.divided) {
+        this.subdivide();
+      }
+
+      if (this.northeast.insert(boid)) {
+        return true;
+      } else if (this.northwest.insert(boid)) {
+        return true;
+      } else if (this.southeast.insert(boid)) {
+        return true;
+      } else if (this.southwest.insert(boid)) {
+        return true;
+      }
+    }
+  }
+
+  query(range, found) {
+    if (!found) {
+      found = [];
+    }
+
+    if (!this.boundary.intersects(range)) {
+      return;
+    }
+
+    for (let b of this.boids) {
+      if (range.contains(b)) {
+        found.push(b);
+      }
+    }
+
+    if (this.divided) {
+      this.northwest.query(range, found);
+      this.northeast.query(range, found);
+      this.southwest.query(range, found);
+      this.southeast.query(range, found);
+    }
+
+    return found;
+  }
+
+  draw() {
+    ctx.strokeRect(
+      this.boundary.x - this.boundary.w,
+      this.boundary.y - this.boundary.h,
+      this.boundary.w * 2,
+      this.boundary.h * 2
+    );
+    if (this.divided) {
+      this.northwest.draw();
+      this.northeast.draw();
+      this.southwest.draw();
+      this.southeast.draw();
+    }
   }
 }
 
@@ -986,6 +1139,9 @@ function setFOV() {
 }
 
 function drawBoids() {
+  let boundary = new Rectangle(width / 2, height / 2, width, height);
+  let qtree = new QuadTree(boundary, 4);
+
   if (isChaseActive) {
     for (let b of boids) {
       b.draw();
@@ -1043,12 +1199,31 @@ function drawBoids() {
     onceWander = true;
   } else {
     for (let b of boids) {
+      qtree.insert(b);
+      //qtree.draw();
+      //console.log(qtree.boids.length);
+      // let range = new Rectangle(
+      //   b.location.x - b.width * 8,
+      //   b.location.y - b.height * 8,
+      //   b.width * 16,
+      //   b.height * 16
+      // );
+
+      let range = new Circle(b.location.x, b.location.y, 100);
+      console.log("RANGE" + qtree.query(range));
+      // //ctx.strokeRect(range.x, range.y, range.w, range.h);
+      // ctx.beginPath();
+      // ctx.arc(range.x, range.y, range.r, 0, Math.PI * 2);
+      // ctx.closePath();
+      // ctx.stroke();
+
       b.draw();
+
       b.maxSpeed = 2;
       b.maxForce = 0.05;
-      isGrouped ? b.group(boids) : "";
-      isSeparated ? b.separate(boids) : "";
-      isAligned ? b.align(boids) : "";
+      isGrouped ? b.group(qtree.query(range)) : "";
+      isSeparated ? b.separate(qtree.query(range)) : "";
+      isAligned ? b.align(qtree.query(range)) : "";
 
       if (path.points.length === 4) {
         b.maxSpeed = 2;
